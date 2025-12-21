@@ -1,24 +1,113 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Inscryption TG</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bar — Prologue</title>
   <style>
-    body {
+    html, body {
       margin: 0;
-      background: #0b0b0b;
+      padding: 0;
+      background: #000;
+      height: 100%;
+      overflow: hidden;
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      display: block;
+    }
+    #subtitle {
+      position: absolute;
+      bottom: 20px;
+      left: 0;
+      right: 0;
+      text-align: center;
       color: #d8d8d8;
       font-family: serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      letter-spacing: 0.5px;
+      text-shadow: 0 0 8px black;
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
-  <div>Стол ждёт.</div>
+
+<canvas id="game"></canvas>
+<div id="subtitle">Ты заходишь в бар. Шум, смех, пиво.</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const subtitle = document.getElementById("subtitle");
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+// ПРОСТАЯ КОМНАТА (БАР)
+let px = 2.5, py = 2.5;
+let pa = 0;
+const map = [
+  "111111",
+  "100001",
+  "100001",
+  "100001",
+  "100001",
+  "111111"
+];
+
+function isWall(x, y) {
+  return map[Math.floor(y)][Math.floor(x)] === "1";
+}
+
+const keys = {};
+window.onkeydown = e => keys[e.key] = true;
+window.onkeyup = e => keys[e.key] = false;
+
+function update(dt) {
+  const speed = 2 * dt;
+  if (keys["w"]) {
+    let nx = px + Math.cos(pa) * speed;
+    let ny = py + Math.sin(pa) * speed;
+    if (!isWall(nx, ny)) { px = nx; py = ny; }
+  }
+  if (keys["a"]) pa -= 1.5 * dt;
+  if (keys["d"]) pa += 1.5 * dt;
+}
+
+function render() {
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  for (let x = 0; x < canvas.width; x++) {
+    let rayAngle = pa + (x / canvas.width - 0.5);
+    let dist = 0;
+    while (dist < 10) {
+      let rx = px + Math.cos(rayAngle) * dist;
+      let ry = py + Math.sin(rayAngle) * dist;
+      if (isWall(rx, ry)) break;
+      dist += 0.05;
+    }
+    let wallHeight = canvas.height / (dist + 0.1);
+    ctx.fillStyle = `rgb(${120 - dist*10},${120 - dist*10},${120 - dist*10})`;
+    ctx.fillRect(x, canvas.height/2 - wallHeight/2, 1, wallHeight);
+  }
+}
+
+let last = performance.now();
+function loop(now) {
+  let dt = (now - last) / 1000;
+  last = now;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+loop(last);
+</script>
+
 </body>
 </html>
