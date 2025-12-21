@@ -59,10 +59,6 @@ function resize(){ canvas.width = innerWidth; canvas.height = innerHeight; }
 addEventListener("resize", resize);
 resize();
 
-/* Карта бара:
-  1 = стена
-  стойка маленькая (по центру сверху)
-*/
 const map = [
   "11111111",
   "10011001", // стойка
@@ -74,21 +70,24 @@ const map = [
   "11111111"
 ];
 
-// Старт игрока
 let px = 4.0;
 let py = 5.5;
 let pa = -Math.PI/2;
 
-// Состояния
 const STATE = { PLAY:"play", TURN:"turn", DIALOG:"dialog" };
 let state = STATE.PLAY;
 
 let triggered = false;
 let targetAngle = pa;
 
-// Триггер: подошёл к стойке
+/* 🔥 ОБНОВЛЁННЫЙ ТРИГГЕР
+   Срабатывает за 2–3 шага до стойки */
 function nearBarCounter(){
-  return py < 2.3 && px > 3.2 && px < 4.8;
+  return (
+    py < 3.6 &&        // раньше, чем вплотную
+    px > 3.0 &&
+    px < 5.0
+  );
 }
 
 function isWall(x,y){
@@ -97,18 +96,9 @@ function isWall(x,y){
   return map[my][mx] === "1";
 }
 
-// Клавиши не зависят от раскладки
 const keys = {};
-addEventListener("keydown", e => {
-  keys[e.code] = true;
-
-  // выбор цифрами (на всякий)
-  if (state === STATE.DIALOG){
-    if (e.code === "Digit1" || e.code === "Numpad1") clickChoice(1);
-    if (e.code === "Digit2" || e.code === "Numpad2") clickChoice(2);
-  }
-});
-addEventListener("keyup", e => keys[e.code] = false);
+addEventListener("keydown", e => keys[e.code]=true);
+addEventListener("keyup", e => keys[e.code]=false);
 
 function lerpAngle(a,b,t){
   let d = b - a;
@@ -120,38 +110,17 @@ function lerpAngle(a,b,t){
 function openOverlay(){
   panel.innerHTML = `
     <div class="title">— Эй. Ты.<br>— Сыграем?</div>
-    <div class="choice" id="ch1">1) Подойти к незнакомцу</div>
-    <div class="choice" id="ch2">2) Пойти пить пиво</div>
-    <div class="hint">Нажми 1 или 2 (или кликни).</div>
+    <div class="choice">1) Подойти к незнакомцу</div>
+    <div class="choice">2) Пойти пить пиво</div>
+    <div class="hint">Нажми 1 или 2.</div>
   `;
   overlay.style.display = "flex";
-  document.getElementById("ch1").onclick = () => clickChoice(1);
-  document.getElementById("ch2").onclick = () => clickChoice(2);
-}
-
-function closeOverlay(){
-  overlay.style.display = "none";
-  panel.innerHTML = "";
-}
-
-function clickChoice(n){
-  // пока просто показываем результат текстом (дальше развилку допишем)
-  if (n === 1){
-    closeOverlay();
-    subtitle.textContent = "Ты подходишь к незнакомцу...";
-    state = STATE.PLAY; // пока вернём контроль
-  } else {
-    closeOverlay();
-    subtitle.textContent = "Ты пьёшь пиво. Мир не меняется. (Потом тут будет конец игры)";
-    state = STATE.PLAY;
-  }
 }
 
 function update(dt){
   const move = 3*dt;
   const rot = 1.7*dt;
 
-  // движение только в PLAY
   if (state === STATE.PLAY){
     if (keys["KeyW"] || keys["ArrowUp"]){
       const nx = px + Math.cos(pa)*move;
@@ -166,21 +135,17 @@ function update(dt){
     if (keys["KeyA"] || keys["ArrowLeft"]) pa -= rot;
     if (keys["KeyD"] || keys["ArrowRight"]) pa += rot;
 
-    // Сработал триггер
     if (!triggered && nearBarCounter()){
       triggered = true;
       state = STATE.TURN;
 
-      // ✅ ФИКС: ПОВОРОТ ВЛЕВО "как на скрине"
-      // было: смотреть на точку
-      // стало: режиссёрский поворот строго влево
+      // 🔥 ПОВОРОТ ВЛЕВО (режиссёрский)
       targetAngle = pa - 1.25;
 
-      subtitle.textContent = "Кто-то зовёт тебя из угла...";
+      subtitle.textContent = "Кто-то окликает тебя из угла...";
     }
   }
 
-  // автоповорот
   if (state === STATE.TURN){
     pa = lerpAngle(pa, targetAngle, dt*3);
     if (Math.abs(pa - targetAngle) < 0.02){
@@ -193,28 +158,24 @@ function update(dt){
 function render(){
   const w = canvas.width, h = canvas.height;
 
-  // потолок / пол
   ctx.fillStyle = "#1a1a1a";
   ctx.fillRect(0,0,w,h/2);
   ctx.fillStyle = "#070707";
   ctx.fillRect(0,h/2,w,h/2);
 
-  // стены
   for (let x=0; x<w; x++){
     const angle = pa + (x/w - 0.5);
     let dist = 0;
-
     while (dist < 20){
       const rx = px + Math.cos(angle)*dist;
       const ry = py + Math.sin(angle)*dist;
       if (isWall(rx,ry)) break;
       dist += 0.04;
     }
-
     if (dist < 0.35) dist = 0.35;
 
     const wallH = h/(dist+0.1);
-    const shade = Math.max(0, 180 - dist*12);
+    const shade = 180 - dist*12;
     ctx.fillStyle = `rgb(${shade},${shade},${shade})`;
     ctx.fillRect(x, h/2 - wallH/2, 1, wallH);
   }
