@@ -48,19 +48,19 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-// КОМПАКТНАЯ ЛОКАЦИЯ БАРА (8x8)
+// БАР 8×8 БЕЗ СТЕНЫ В ЦЕНТРЕ (только внешние стены)
 const map = [
   "11111111",
   "10000001",
-  "10011001",
-  "10010001",
-  "10011001",
+  "10000001",
+  "10000001",
+  "10000001",
   "10000001",
   "10000001",
   "11111111"
 ];
 
-// старт ближе к входу
+// Старт игрока
 let px = 2.5, py = 5.5;
 let pa = -Math.PI / 2;
 
@@ -71,7 +71,7 @@ function isWall(x, y) {
   return map[my][mx] === "1";
 }
 
-// управление без зависимости от раскладки
+// Управление не зависит от раскладки
 const keys = {};
 window.addEventListener("keydown", e => keys[e.code] = true);
 window.addEventListener("keyup", e => keys[e.code] = false);
@@ -80,32 +80,32 @@ function update(dt) {
   const moveSpeed = 3.0 * dt;
   const rotSpeed = 1.7 * dt;
 
-  // вперёд
+  // Вперёд
   if (keys["KeyW"] || keys["ArrowUp"]) {
     const nx = px + Math.cos(pa) * moveSpeed;
     const ny = py + Math.sin(pa) * moveSpeed;
     if (!isWall(nx, ny)) { px = nx; py = ny; }
   }
 
-  // назад
+  // Назад
   if (keys["KeyS"] || keys["ArrowDown"]) {
     const nx = px - Math.cos(pa) * moveSpeed;
     const ny = py - Math.sin(pa) * moveSpeed;
     if (!isWall(nx, ny)) { px = nx; py = ny; }
   }
 
-  // поворот
+  // Поворот
   if (keys["KeyA"] || keys["ArrowLeft"]) pa -= rotSpeed;
   if (keys["KeyD"] || keys["ArrowRight"]) pa += rotSpeed;
 }
 
-// рендер Doom-style
+// Рендер Doom-style raycasting
 function render() {
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   for (let x = 0; x < canvas.width; x++) {
-    const rayAngle = pa + (x / canvas.width - 0.5);
+    const rayAngle = pa + (x / canvas.width - 0.5); // FOV ~ 1 рад
     let dist = 0;
 
     while (dist < 20) {
