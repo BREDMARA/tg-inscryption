@@ -48,26 +48,22 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-// БОЛЬШАЯ КАРТА "БАРА" (14x14) + "стойка" островком в центре
+// СРЕДНЯЯ КАРТА "БАРА" (10x10) + маленькая "стойка" в центре
 const map = [
-  "11111111111111",
-  "10000000000001",
-  "10000000000001",
-  "10000000000001",
-  "10000000000001",
-  "10000000000001",
-  "10000011100001",
-  "10000010100001",
-  "10000011100001",
-  "10000000000001",
-  "10000000000001",
-  "10000000000001",
-  "10000000000001",
-  "11111111111111"
+  "1111111111",
+  "1000000001",
+  "1000000001",
+  "1000110001",
+  "1000100001",
+  "1000110001",
+  "1000000001",
+  "1000000001",
+  "1000000001",
+  "1111111111"
 ];
 
 // Старт игрока ближе к "входу"
-let px = 2.5, py = 11.5;
+let px = 2.5, py = 7.5;
 let pa = -Math.PI / 2;
 
 function isWall(x, y) {
@@ -77,7 +73,7 @@ function isWall(x, y) {
   return map[my][mx] === "1";
 }
 
-// Управление НЕ зависит от раскладки (KeyW/KeyA/KeyS/KeyD)
+// Управление НЕ зависит от раскладки
 const keys = {};
 window.addEventListener("keydown", (e) => {
   keys[e.code] = true;
@@ -92,15 +88,15 @@ function update(dt) {
 
   // Вперёд
   if (keys["KeyW"] || keys["ArrowUp"]) {
-    let nx = px + Math.cos(pa) * moveSpeed;
-    let ny = py + Math.sin(pa) * moveSpeed;
+    const nx = px + Math.cos(pa) * moveSpeed;
+    const ny = py + Math.sin(pa) * moveSpeed;
     if (!isWall(nx, ny)) { px = nx; py = ny; }
   }
 
   // Назад
   if (keys["KeyS"] || keys["ArrowDown"]) {
-    let nx = px - Math.cos(pa) * moveSpeed;
-    let ny = py - Math.sin(pa) * moveSpeed;
+    const nx = px - Math.cos(pa) * moveSpeed;
+    const ny = py - Math.sin(pa) * moveSpeed;
     if (!isWall(nx, ny)) { px = nx; py = ny; }
   }
 
@@ -118,7 +114,7 @@ function render() {
     const rayAngle = pa + (x / canvas.width - 0.5) * 1.0; // FOV ~ 1 рад
     let dist = 0;
 
-    while (dist < 30) {
+    while (dist < 25) {
       const rx = px + Math.cos(rayAngle) * dist;
       const ry = py + Math.sin(rayAngle) * dist;
       if (isWall(rx, ry)) break;
@@ -128,7 +124,7 @@ function render() {
     const wallHeight = canvas.height / (dist + 0.1);
 
     // затемнение по дистанции
-    const shade = Math.max(0, 160 - dist * 9);
+    const shade = Math.max(0, 160 - dist * 10);
     ctx.fillStyle = `rgb(${shade},${shade},${shade})`;
 
     ctx.fillRect(
