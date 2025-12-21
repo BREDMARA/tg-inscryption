@@ -68,8 +68,8 @@
     <div style="margin-bottom:12px;">
       — Эй. Ты.<br>— Сыграем?
     </div>
-    <div class="choice" id="c1">1) Подойти к незнакомцу</div>
-    <div class="choice" id="c2">2) Пойти пить пиво</div>
+    <div class="choice">1) Подойти к незнакомцу</div>
+    <div class="choice">2) Пойти пить пиво</div>
   </div>
 </div>
 
@@ -86,14 +86,9 @@ function resize() {
 addEventListener("resize", resize);
 resize();
 
-/*
-  Карта:
-  - внешние стены
-  - стойка: небольшая, по центру, вдоль верхней стены
-*/
 const map = [
   "11111111",
-  "10011001", // ← стойка
+  "10011001",
   "10000001",
   "10000001",
   "10000001",
@@ -106,6 +101,11 @@ let px = 4.0;
 let py = 5.5;
 let pa = -Math.PI / 2;
 
+// 🔥 новые флаги
+let autoTurn = false;
+let targetAngle = pa;
+let triggered = false;
+
 function isWall(x, y) {
   const mx = Math.floor(x);
   const my = Math.floor(y);
@@ -113,8 +113,6 @@ function isWall(x, y) {
   return map[my][mx] === "1";
 }
 
-// триггер — вплотную к стойке
-let triggered = false;
 function nearBarCounter() {
   return py < 2.3 && px > 3.2 && px < 4.8;
 }
@@ -123,27 +121,47 @@ const keys = {};
 addEventListener("keydown", e => keys[e.code] = true);
 addEventListener("keyup", e => keys[e.code] = false);
 
+function lerpAngle(a, b, t) {
+  let diff = b - a;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  return a + diff * t;
+}
+
 function update(dt) {
   const move = 3 * dt;
   const rot = 1.7 * dt;
 
-  if (keys["KeyW"] || keys["ArrowUp"]) {
-    const nx = px + Math.cos(pa) * move;
-    const ny = py + Math.sin(pa) * move;
-    if (!isWall(nx, ny)) { px = nx; py = ny; }
+  if (!autoTurn) {
+    if (keys["KeyW"] || keys["ArrowUp"]) {
+      const nx = px + Math.cos(pa) * move;
+      const ny = py + Math.sin(pa) * move;
+      if (!isWall(nx, ny)) { px = nx; py = ny; }
+    }
+    if (keys["KeyS"] || keys["ArrowDown"]) {
+      const nx = px - Math.cos(pa) * move;
+      const ny = py - Math.sin(pa) * move;
+      if (!isWall(nx, ny)) { px = nx; py = ny; }
+    }
+    if (keys["KeyA"] || keys["ArrowLeft"]) pa -= rot;
+    if (keys["KeyD"] || keys["ArrowRight"]) pa += rot;
   }
-  if (keys["KeyS"] || keys["ArrowDown"]) {
-    const nx = px - Math.cos(pa) * move;
-    const ny = py - Math.sin(pa) * move;
-    if (!isWall(nx, ny)) { px = nx; py = ny; }
-  }
-  if (keys["KeyA"] || keys["ArrowLeft"]) pa -= rot;
-  if (keys["KeyD"] || keys["ArrowRight"]) pa += rot;
 
   if (!triggered && nearBarCounter()) {
     triggered = true;
-    overlay.style.display = "flex";
-    subtitle.textContent = "В углу сидит человек в плаще.";
+    autoTurn = true;
+
+    // 🎯 угол в сторону "незнакомца"
+    targetAngle = -Math.PI / 2 + 0.6;
+    subtitle.textContent = "Кто-то смотрит на тебя из тени.";
+  }
+
+  if (autoTurn) {
+    pa = lerpAngle(pa, targetAngle, dt * 3);
+    if (Math.abs(pa - targetAngle) < 0.01) {
+      autoTurn = false;
+      overlay.style.display = "flex";
+    }
   }
 }
 
@@ -151,7 +169,6 @@ function render() {
   const w = canvas.width;
   const h = canvas.height;
 
-  // потолок / пол
   ctx.fillStyle = "#1a1a1a";
   ctx.fillRect(0, 0, w, h/2);
   ctx.fillStyle = "#070707";
@@ -169,11 +186,9 @@ function render() {
     }
 
     if (dist < 0.35) dist = 0.35;
-
     const wallH = h / (dist + 0.1);
     const shade = 180 - dist * 12;
     ctx.fillStyle = `rgb(${shade},${shade},${shade})`;
-
     ctx.fillRect(x, h/2 - wallH/2, 1, wallH);
   }
 
