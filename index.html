@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Bar — Prologue</title>
   <style>
     html, body {
@@ -18,9 +18,11 @@
       image-rendering: pixelated;
       display: block;
     }
+
+    /* Субтитры снизу */
     #subtitle {
       position: absolute;
-      bottom: 20px;
+      bottom: 18px;
       left: 0;
       right: 0;
       text-align: center;
@@ -28,6 +30,54 @@
       font-family: serif;
       text-shadow: 0 0 8px black;
       pointer-events: none;
+      padding: 0 16px;
+      line-height: 1.35;
+    }
+
+    /* Оверлей выбора */
+    #overlay {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.55);
+      color: #d8d8d8;
+      font-family: serif;
+      text-shadow: 0 0 8px black;
+      padding: 24px;
+    }
+    #panel {
+      max-width: 760px;
+      width: 100%;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.45);
+      padding: 18px 18px 14px;
+    }
+    #panel h2 {
+      margin: 0 0 10px;
+      font-size: 20px;
+      font-weight: 600;
+    }
+    #panel p {
+      margin: 0 0 14px;
+      opacity: 0.95;
+    }
+    .choice {
+      margin: 10px 0;
+      padding: 10px 12px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.04);
+      cursor: pointer;
+      user-select: none;
+    }
+    .choice:hover {
+      background: rgba(255,255,255,0.08);
+    }
+    .hint {
+      margin-top: 10px;
+      opacity: 0.8;
+      font-size: 14px;
     }
   </style>
 </head>
@@ -36,109 +86,222 @@
 <canvas id="game"></canvas>
 <div id="subtitle">Ты заходишь в бар. Шум, смех, пиво.</div>
 
+<div id="overlay">
+  <div id="panel">
+    <h2 id="ovTitle">— Эй. Ты. — Сыграем?</h2>
+    <p id="ovText">В углу сидит чудила в плаще. Перед ним — карты.</p>
+
+    <div class="choice" id="c1">1) Подойти к незнакомцу</div>
+    <div class="choice" id="c2">2) Пойти пить пиво</div>
+
+    <div class="hint" id="ovHint">Нажми 1 или 2</div>
+  </div>
+</div>
+
 <script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
-const subtitle = document.getElementById("subtitle");
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const subtitle = document.getElementById("subtitle");
 
-function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-}
-window.addEventListener("resize", resize);
-resize();
+  const overlay = document.getElementById("overlay");
+  const ovTitle = document.getElementById("ovTitle");
+  const ovText  = document.getElementById("ovText");
+  const ovHint  = document.getElementById("ovHint");
+  const c1 = document.getElementById("c1");
+  const c2 = document.getElementById("c2");
 
-// БАР 8×8 БЕЗ СТЕНЫ В ЦЕНТРЕ (только внешние стены)
-const map = [
-  "11111111",
-  "10000001",
-  "10000001",
-  "10000001",
-  "10000001",
-  "10000001",
-  "10000001",
-  "11111111"
-];
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  window.addEventListener("resize", resize);
+  resize();
 
-// Старт игрока
-let px = 2.5, py = 5.5;
-let pa = -Math.PI / 2;
+  // БАР 8×8 (только внешние стены)
+  const map = [
+    "11111111",
+    "10000001",
+    "10000001",
+    "10000001",
+    "10000001",
+    "10000001",
+    "10000001",
+    "11111111"
+  ];
 
-function isWall(x, y) {
-  const mx = Math.floor(x);
-  const my = Math.floor(y);
-  if (my < 0 || my >= map.length || mx < 0 || mx >= map[0].length) return true;
-  return map[my][mx] === "1";
-}
+  // Старт игрока
+  let px = 2.5, py = 5.5;
+  let pa = -Math.PI / 2;
 
-// Управление не зависит от раскладки
-const keys = {};
-window.addEventListener("keydown", e => keys[e.code] = true);
-window.addEventListener("keyup", e => keys[e.code] = false);
-
-function update(dt) {
-  const moveSpeed = 3.0 * dt;
-  const rotSpeed = 1.7 * dt;
-
-  // Вперёд
-  if (keys["KeyW"] || keys["ArrowUp"]) {
-    const nx = px + Math.cos(pa) * moveSpeed;
-    const ny = py + Math.sin(pa) * moveSpeed;
-    if (!isWall(nx, ny)) { px = nx; py = ny; }
+  function isWall(x, y) {
+    const mx = Math.floor(x);
+    const my = Math.floor(y);
+    if (my < 0 || my >= map.length || mx < 0 || mx >= map[0].length) return true;
+    return map[my][mx] === "1";
   }
 
-  // Назад
-  if (keys["KeyS"] || keys["ArrowDown"]) {
-    const nx = px - Math.cos(pa) * moveSpeed;
-    const ny = py - Math.sin(pa) * moveSpeed;
-    if (!isWall(nx, ny)) { px = nx; py = ny; }
+  // ===== Состояния игры =====
+  // explore -> choice1 -> (beer_end / approach)
+  let state = "explore";
+  let triggeredChoice1 = false;
+
+  // "Стойка" как зона-триггер (у верхней стены)
+  // Подошёл к верхней части комнаты (y маленькое) и примерно по центру (x 3..5)
+  function inBarCounterZone() {
+    return (py < 2.0 && px > 3.0 && px < 5.0);
   }
 
-  // Поворот
-  if (keys["KeyA"] || keys["ArrowLeft"]) pa -= rotSpeed;
-  if (keys["KeyD"] || keys["ArrowRight"]) pa += rotSpeed;
-}
+  function showChoice1() {
+    state = "choice1";
+    overlay.style.display = "flex";
+    subtitle.textContent = "Из угла раздаётся голос...";
+  }
 
-// Рендер Doom-style raycasting
-function render() {
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  function hideOverlay() {
+    overlay.style.display = "none";
+  }
 
-  for (let x = 0; x < canvas.width; x++) {
-    const rayAngle = pa + (x / canvas.width - 0.5); // FOV ~ 1 рад
-    let dist = 0;
+  function restart() {
+    px = 2.5; py = 5.5; pa = -Math.PI / 2;
+    state = "explore";
+    triggeredChoice1 = false;
+    hideOverlay();
+    subtitle.textContent = "Ты заходишь в бар. Шум, смех, пиво.";
+  }
 
-    while (dist < 20) {
-      const rx = px + Math.cos(rayAngle) * dist;
-      const ry = py + Math.sin(rayAngle) * dist;
-      if (isWall(rx, ry)) break;
-      dist += 0.04;
+  function endBeer() {
+    state = "beer_end";
+    hideOverlay();
+    subtitle.textContent = "Иногда лучший выбор — не играть. (Нажми R, чтобы начать заново)";
+  }
+
+  function approachStranger() {
+    state = "approach";
+    hideOverlay();
+    subtitle.textContent = "Ты подходишь к незнакомцу...";
+    // маленькая пауза “катсцены”
+    setTimeout(() => {
+      if (state !== "approach") return;
+      subtitle.textContent = "Незнакомец тасует карты. Кажется, он улыбается под капюшоном...";
+      // дальше мы добавим сцену “за столом” и выбор “помочь / не помочь”
+    }, 1200);
+  }
+
+  // ===== Управление (без зависимости от раскладки) =====
+  const keys = {};
+  window.addEventListener("keydown", (e) => {
+    keys[e.code] = true;
+
+    // Выборы по цифрам
+    if (state === "choice1") {
+      if (e.code === "Digit1" || e.code === "Numpad1") approachStranger();
+      if (e.code === "Digit2" || e.code === "Numpad2") endBeer();
     }
 
-    const wallHeight = canvas.height / (dist + 0.1);
-    const shade = Math.max(0, 160 - dist * 12);
+    // Рестарт в концовке
+    if (state === "beer_end" && e.code === "KeyR") restart();
+  });
+  window.addEventListener("keyup", (e) => {
+    keys[e.code] = false;
+  });
 
-    ctx.fillStyle = `rgb(${shade},${shade},${shade})`;
-    ctx.fillRect(
-      x,
-      canvas.height / 2 - wallHeight / 2,
-      1,
-      wallHeight
-    );
+  c1.addEventListener("click", approachStranger);
+  c2.addEventListener("click", endBeer);
+
+  function update(dt) {
+    // В режимах выбора/катсцены — не двигаем игрока
+    if (state !== "explore") {
+      // но в катсцене "approach" можно позволить крутить голову? пока нет, чтобы было кино
+      return;
+    }
+
+    const moveSpeed = 3.0 * dt;
+    const rotSpeed = 1.7 * dt;
+
+    // Вперёд
+    if (keys["KeyW"] || keys["ArrowUp"]) {
+      const nx = px + Math.cos(pa) * moveSpeed;
+      const ny = py + Math.sin(pa) * moveSpeed;
+      if (!isWall(nx, ny)) { px = nx; py = ny; }
+    }
+
+    // Назад
+    if (keys["KeyS"] || keys["ArrowDown"]) {
+      const nx = px - Math.cos(pa) * moveSpeed;
+      const ny = py - Math.sin(pa) * moveSpeed;
+      if (!isWall(nx, ny)) { px = nx; py = ny; }
+    }
+
+    // Поворот
+    if (keys["KeyA"] || keys["ArrowLeft"]) pa -= rotSpeed;
+    if (keys["KeyD"] || keys["ArrowRight"]) pa += rotSpeed;
+
+    // Триггер: подошёл к стойке → первый выбор
+    if (!triggeredChoice1 && inBarCounterZone()) {
+      triggeredChoice1 = true;
+      showChoice1();
+    }
   }
-}
 
-let last = performance.now();
-function loop(now) {
-  const dt = (now - last) / 1000;
-  last = now;
+  // ===== Рендер Doom-style + пол/потолок =====
+  function render() {
+    const w = canvas.width;
+    const h = canvas.height;
 
-  update(dt);
-  render();
+    // потолок
+    ctx.fillStyle = "#070707";
+    ctx.fillRect(0, 0, w, h / 2);
 
-  requestAnimationFrame(loop);
-}
-loop(last);
+    // пол
+    ctx.fillStyle = "#111111";
+    ctx.fillRect(0, h / 2, w, h / 2);
+
+    // стены
+    for (let x = 0; x < w; x++) {
+      const rayAngle = pa + (x / w - 0.5); // FOV ~ 1 рад
+      let dist = 0;
+
+      while (dist < 20) {
+        const rx = px + Math.cos(rayAngle) * dist;
+        const ry = py + Math.sin(rayAngle) * dist;
+        if (isWall(rx, ry)) break;
+        dist += 0.04;
+      }
+
+      const wallHeight = h / (dist + 0.1);
+      const shade = Math.max(0, 170 - dist * 12);
+      ctx.fillStyle = `rgb(${shade},${shade},${shade})`;
+
+      ctx.fillRect(
+        x,
+        h / 2 - wallHeight / 2,
+        1,
+        wallHeight
+      );
+    }
+
+    // маленькая подсказка, где "стойка"
+    // (только текстом внизу, чтобы ты понимал механику; потом уберём)
+    if (state === "explore") {
+      if (inBarCounterZone() && !triggeredChoice1) {
+        subtitle.textContent = "Ты почти у стойки...";
+      } else if (!triggeredChoice1) {
+        subtitle.textContent = "Ты заходишь в бар. Шум, смех, пиво.";
+      }
+    }
+  }
+
+  let last = performance.now();
+  function loop(now) {
+    const dt = (now - last) / 1000;
+    last = now;
+
+    update(dt);
+    render();
+
+    requestAnimationFrame(loop);
+  }
+  loop(last);
 </script>
 
 </body>
