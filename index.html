@@ -48,62 +48,106 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-// ПРОСТАЯ КОМНАТА (БАР)
-let px = 2.5, py = 2.5;
-let pa = 0;
+// БОЛЬШАЯ КАРТА "БАРА" (14x14) + "стойка" островком в центре
 const map = [
-  "111111",
-  "100001",
-  "100001",
-  "100001",
-  "100001",
-  "111111"
+  "11111111111111",
+  "10000000000001",
+  "10000000000001",
+  "10000000000001",
+  "10000000000001",
+  "10000000000001",
+  "10000011100001",
+  "10000010100001",
+  "10000011100001",
+  "10000000000001",
+  "10000000000001",
+  "10000000000001",
+  "10000000000001",
+  "11111111111111"
 ];
 
+// Старт игрока ближе к "входу"
+let px = 2.5, py = 11.5;
+let pa = -Math.PI / 2;
+
 function isWall(x, y) {
-  return map[Math.floor(y)][Math.floor(x)] === "1";
+  const mx = Math.floor(x);
+  const my = Math.floor(y);
+  if (my < 0 || my >= map.length || mx < 0 || mx >= map[0].length) return true;
+  return map[my][mx] === "1";
 }
 
+// Управление НЕ зависит от раскладки (KeyW/KeyA/KeyS/KeyD)
 const keys = {};
-window.onkeydown = e => keys[e.key] = true;
-window.onkeyup = e => keys[e.key] = false;
+window.addEventListener("keydown", (e) => {
+  keys[e.code] = true;
+});
+window.addEventListener("keyup", (e) => {
+  keys[e.code] = false;
+});
 
 function update(dt) {
-  const speed = 2 * dt;
-  if (keys["w"]) {
-    let nx = px + Math.cos(pa) * speed;
-    let ny = py + Math.sin(pa) * speed;
+  const moveSpeed = 3.0 * dt;
+  const rotSpeed = 1.7 * dt;
+
+  // Вперёд
+  if (keys["KeyW"] || keys["ArrowUp"]) {
+    let nx = px + Math.cos(pa) * moveSpeed;
+    let ny = py + Math.sin(pa) * moveSpeed;
     if (!isWall(nx, ny)) { px = nx; py = ny; }
   }
-  if (keys["a"]) pa -= 1.5 * dt;
-  if (keys["d"]) pa += 1.5 * dt;
+
+  // Назад
+  if (keys["KeyS"] || keys["ArrowDown"]) {
+    let nx = px - Math.cos(pa) * moveSpeed;
+    let ny = py - Math.sin(pa) * moveSpeed;
+    if (!isWall(nx, ny)) { px = nx; py = ny; }
+  }
+
+  // Поворот
+  if (keys["KeyA"] || keys["ArrowLeft"]) pa -= rotSpeed;
+  if (keys["KeyD"] || keys["ArrowRight"]) pa += rotSpeed;
 }
 
+// Рендер "думового" коридора (простая трассировка лучей)
 function render() {
   ctx.fillStyle = "#000";
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   for (let x = 0; x < canvas.width; x++) {
-    let rayAngle = pa + (x / canvas.width - 0.5);
+    const rayAngle = pa + (x / canvas.width - 0.5) * 1.0; // FOV ~ 1 рад
     let dist = 0;
-    while (dist < 10) {
-      let rx = px + Math.cos(rayAngle) * dist;
-      let ry = py + Math.sin(rayAngle) * dist;
+
+    while (dist < 30) {
+      const rx = px + Math.cos(rayAngle) * dist;
+      const ry = py + Math.sin(rayAngle) * dist;
       if (isWall(rx, ry)) break;
-      dist += 0.05;
+      dist += 0.04;
     }
-    let wallHeight = canvas.height / (dist + 0.1);
-    ctx.fillStyle = `rgb(${120 - dist*10},${120 - dist*10},${120 - dist*10})`;
-    ctx.fillRect(x, canvas.height/2 - wallHeight/2, 1, wallHeight);
+
+    const wallHeight = canvas.height / (dist + 0.1);
+
+    // затемнение по дистанции
+    const shade = Math.max(0, 160 - dist * 9);
+    ctx.fillStyle = `rgb(${shade},${shade},${shade})`;
+
+    ctx.fillRect(
+      x,
+      canvas.height / 2 - wallHeight / 2,
+      1,
+      wallHeight
+    );
   }
 }
 
 let last = performance.now();
 function loop(now) {
-  let dt = (now - last) / 1000;
+  const dt = (now - last) / 1000;
   last = now;
+
   update(dt);
   render();
+
   requestAnimationFrame(loop);
 }
 loop(last);
