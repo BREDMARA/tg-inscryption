@@ -5,57 +5,38 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Bar — Prologue</title>
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: #000;
-      height: 100%;
-      overflow: hidden;
+    html, body { margin:0; padding:0; height:100%; background:#000; overflow:hidden; }
+    canvas { width:100%; height:100%; image-rendering:pixelated; display:block; }
+
+    #subtitle{
+      position:absolute; left:0; right:0; bottom:18px;
+      text-align:center; color:#d8d8d8; font-family:serif;
+      text-shadow:0 0 8px #000; pointer-events:none; padding:0 16px;
+      user-select:none; line-height:1.35;
     }
-    canvas {
-      width: 100%;
-      height: 100%;
-      image-rendering: pixelated;
-      display: block;
+
+    #overlay{
+      position:absolute; inset:0; display:none;
+      align-items:center; justify-content:center;
+      background:rgba(0,0,0,0.55);
+      color:#d8d8d8; font-family:serif; text-shadow:0 0 8px #000;
+      padding:24px;
     }
-    #subtitle {
-      position: absolute;
-      bottom: 18px;
-      left: 0;
-      right: 0;
-      text-align: center;
-      color: #d8d8d8;
-      font-family: serif;
-      text-shadow: 0 0 8px black;
-      pointer-events: none;
-      padding: 0 16px;
+    #panel{
+      width:min(780px, calc(100vw - 32px));
+      padding:18px;
+      border:1px solid rgba(255,255,255,0.15);
+      background:rgba(0,0,0,0.45);
     }
-    #overlay {
-      position: absolute;
-      inset: 0;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0,0,0,0.55);
-      color: #d8d8d8;
-      font-family: serif;
-      text-shadow: 0 0 8px black;
+    .title{ margin:0 0 10px; font-size:18px; opacity:0.95; }
+    .choice{
+      margin-top:10px; padding:10px 12px;
+      border:1px solid rgba(255,255,255,0.22);
+      background:rgba(255,255,255,0.04);
+      cursor:pointer; user-select:none;
     }
-    #panel {
-      max-width: 720px;
-      padding: 20px;
-      border: 1px solid rgba(255,255,255,0.15);
-      background: rgba(0,0,0,0.45);
-    }
-    .choice {
-      margin-top: 10px;
-      padding: 10px;
-      border: 1px solid rgba(255,255,255,0.2);
-      cursor: pointer;
-    }
-    .choice:hover {
-      background: rgba(255,255,255,0.08);
-    }
+    .choice:hover{ background:rgba(255,255,255,0.08); }
+    .hint{ margin-top:10px; opacity:0.75; font-size:13px; }
   </style>
 </head>
 <body>
@@ -64,13 +45,7 @@
 <div id="subtitle">Ты заходишь в бар. Шум, смех, пиво.</div>
 
 <div id="overlay">
-  <div id="panel">
-    <div style="margin-bottom:12px;">
-      — Эй. Ты.<br>— Сыграем?
-    </div>
-    <div class="choice">1) Подойти к незнакомцу</div>
-    <div class="choice">2) Пойти пить пиво</div>
-  </div>
+  <div id="panel"></div>
 </div>
 
 <script>
@@ -78,17 +53,19 @@ const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const subtitle = document.getElementById("subtitle");
 const overlay = document.getElementById("overlay");
+const panel = document.getElementById("panel");
 
-function resize() {
-  canvas.width = innerWidth;
-  canvas.height = innerHeight;
-}
+function resize(){ canvas.width = innerWidth; canvas.height = innerHeight; }
 addEventListener("resize", resize);
 resize();
 
+/* Карта бара:
+  1 = стена
+  стойка маленькая (по центру сверху)
+*/
 const map = [
   "11111111",
-  "10011001",
+  "10011001", // стойка
   "10000001",
   "10000001",
   "10000001",
@@ -97,110 +74,160 @@ const map = [
   "11111111"
 ];
 
+// Старт игрока
 let px = 4.0;
 let py = 5.5;
-let pa = -Math.PI / 2;
+let pa = -Math.PI/2;
 
-// 🔥 новые флаги
-let autoTurn = false;
-let targetAngle = pa;
+// Состояния
+const STATE = { PLAY:"play", TURN:"turn", DIALOG:"dialog" };
+let state = STATE.PLAY;
+
 let triggered = false;
+let targetAngle = pa;
 
-function isWall(x, y) {
-  const mx = Math.floor(x);
-  const my = Math.floor(y);
-  if (my < 0 || my >= map.length || mx < 0 || mx >= map[0].length) return true;
-  return map[my][mx] === "1";
-}
-
-function nearBarCounter() {
+// Триггер: подошёл к стойке
+function nearBarCounter(){
   return py < 2.3 && px > 3.2 && px < 4.8;
 }
 
-const keys = {};
-addEventListener("keydown", e => keys[e.code] = true);
-addEventListener("keyup", e => keys[e.code] = false);
-
-function lerpAngle(a, b, t) {
-  let diff = b - a;
-  while (diff > Math.PI) diff -= Math.PI * 2;
-  while (diff < -Math.PI) diff += Math.PI * 2;
-  return a + diff * t;
+function isWall(x,y){
+  const mx = Math.floor(x), my = Math.floor(y);
+  if (my<0||my>=map.length||mx<0||mx>=map[0].length) return true;
+  return map[my][mx] === "1";
 }
 
-function update(dt) {
-  const move = 3 * dt;
-  const rot = 1.7 * dt;
+// Клавиши не зависят от раскладки
+const keys = {};
+addEventListener("keydown", e => {
+  keys[e.code] = true;
 
-  if (!autoTurn) {
-    if (keys["KeyW"] || keys["ArrowUp"]) {
-      const nx = px + Math.cos(pa) * move;
-      const ny = py + Math.sin(pa) * move;
-      if (!isWall(nx, ny)) { px = nx; py = ny; }
+  // выбор цифрами (на всякий)
+  if (state === STATE.DIALOG){
+    if (e.code === "Digit1" || e.code === "Numpad1") clickChoice(1);
+    if (e.code === "Digit2" || e.code === "Numpad2") clickChoice(2);
+  }
+});
+addEventListener("keyup", e => keys[e.code] = false);
+
+function lerpAngle(a,b,t){
+  let d = b - a;
+  while (d > Math.PI) d -= Math.PI*2;
+  while (d < -Math.PI) d += Math.PI*2;
+  return a + d*t;
+}
+
+function openOverlay(){
+  panel.innerHTML = `
+    <div class="title">— Эй. Ты.<br>— Сыграем?</div>
+    <div class="choice" id="ch1">1) Подойти к незнакомцу</div>
+    <div class="choice" id="ch2">2) Пойти пить пиво</div>
+    <div class="hint">Нажми 1 или 2 (или кликни).</div>
+  `;
+  overlay.style.display = "flex";
+  document.getElementById("ch1").onclick = () => clickChoice(1);
+  document.getElementById("ch2").onclick = () => clickChoice(2);
+}
+
+function closeOverlay(){
+  overlay.style.display = "none";
+  panel.innerHTML = "";
+}
+
+function clickChoice(n){
+  // пока просто показываем результат текстом (дальше развилку допишем)
+  if (n === 1){
+    closeOverlay();
+    subtitle.textContent = "Ты подходишь к незнакомцу...";
+    state = STATE.PLAY; // пока вернём контроль
+  } else {
+    closeOverlay();
+    subtitle.textContent = "Ты пьёшь пиво. Мир не меняется. (Потом тут будет конец игры)";
+    state = STATE.PLAY;
+  }
+}
+
+function update(dt){
+  const move = 3*dt;
+  const rot = 1.7*dt;
+
+  // движение только в PLAY
+  if (state === STATE.PLAY){
+    if (keys["KeyW"] || keys["ArrowUp"]){
+      const nx = px + Math.cos(pa)*move;
+      const ny = py + Math.sin(pa)*move;
+      if (!isWall(nx,ny)) { px = nx; py = ny; }
     }
-    if (keys["KeyS"] || keys["ArrowDown"]) {
-      const nx = px - Math.cos(pa) * move;
-      const ny = py - Math.sin(pa) * move;
-      if (!isWall(nx, ny)) { px = nx; py = ny; }
+    if (keys["KeyS"] || keys["ArrowDown"]){
+      const nx = px - Math.cos(pa)*move;
+      const ny = py - Math.sin(pa)*move;
+      if (!isWall(nx,ny)) { px = nx; py = ny; }
     }
     if (keys["KeyA"] || keys["ArrowLeft"]) pa -= rot;
     if (keys["KeyD"] || keys["ArrowRight"]) pa += rot;
+
+    // Сработал триггер
+    if (!triggered && nearBarCounter()){
+      triggered = true;
+      state = STATE.TURN;
+
+      // ✅ ФИКС: ПОВОРОТ ВЛЕВО "как на скрине"
+      // было: смотреть на точку
+      // стало: режиссёрский поворот строго влево
+      targetAngle = pa - 1.25;
+
+      subtitle.textContent = "Кто-то зовёт тебя из угла...";
+    }
   }
 
-  if (!triggered && nearBarCounter()) {
-    triggered = true;
-    autoTurn = true;
-
-    // 🎯 угол в сторону "незнакомца"
-    targetAngle = -Math.PI / 2 + 0.6;
-    subtitle.textContent = "Кто-то смотрит на тебя из тени.";
-  }
-
-  if (autoTurn) {
-    pa = lerpAngle(pa, targetAngle, dt * 3);
-    if (Math.abs(pa - targetAngle) < 0.01) {
-      autoTurn = false;
-      overlay.style.display = "flex";
+  // автоповорот
+  if (state === STATE.TURN){
+    pa = lerpAngle(pa, targetAngle, dt*3);
+    if (Math.abs(pa - targetAngle) < 0.02){
+      state = STATE.DIALOG;
+      openOverlay();
     }
   }
 }
 
-function render() {
-  const w = canvas.width;
-  const h = canvas.height;
+function render(){
+  const w = canvas.width, h = canvas.height;
 
+  // потолок / пол
   ctx.fillStyle = "#1a1a1a";
-  ctx.fillRect(0, 0, w, h/2);
+  ctx.fillRect(0,0,w,h/2);
   ctx.fillStyle = "#070707";
-  ctx.fillRect(0, h/2, w, h/2);
+  ctx.fillRect(0,h/2,w,h/2);
 
-  for (let x = 0; x < w; x++) {
-    const angle = pa + (x / w - 0.5);
+  // стены
+  for (let x=0; x<w; x++){
+    const angle = pa + (x/w - 0.5);
     let dist = 0;
 
-    while (dist < 20) {
-      const rx = px + Math.cos(angle) * dist;
-      const ry = py + Math.sin(angle) * dist;
-      if (isWall(rx, ry)) break;
+    while (dist < 20){
+      const rx = px + Math.cos(angle)*dist;
+      const ry = py + Math.sin(angle)*dist;
+      if (isWall(rx,ry)) break;
       dist += 0.04;
     }
 
     if (dist < 0.35) dist = 0.35;
-    const wallH = h / (dist + 0.1);
-    const shade = 180 - dist * 12;
+
+    const wallH = h/(dist+0.1);
+    const shade = Math.max(0, 180 - dist*12);
     ctx.fillStyle = `rgb(${shade},${shade},${shade})`;
     ctx.fillRect(x, h/2 - wallH/2, 1, wallH);
   }
 
-  // крестик
+  // прицел
   ctx.fillStyle = "rgba(255,255,255,0.35)";
   ctx.fillRect(w/2 - 6, h/2, 12, 1);
   ctx.fillRect(w/2, h/2 - 6, 1, 12);
 }
 
 let last = performance.now();
-function loop(t) {
-  const dt = (t - last) / 1000;
+function loop(t){
+  const dt = (t-last)/1000;
   last = t;
   update(dt);
   render();
