@@ -80,7 +80,7 @@ let px = 4.0;
 let py = 6.0;
 let pa = -Math.PI/2;
 
-const STATE = { PLAY:"play", TURN:"turn", DIALOG:"dialog" };
+const STATE = { PLAY:"play", AUTO:"auto", TURN:"turn", DIALOG:"dialog" };
 let state = STATE.PLAY;
 
 let triggered = false;
@@ -90,8 +90,8 @@ let targetAngle = pa;
 const BAR = { x: 4.0, y: 1.2 };       // центр стойки (можешь двигать)
 const STRANGER = { x: 1.6, y: 2.0 };  // точка "незнакомец в углу" (можешь двигать)
 
-function resizeFix(){ /* just in case */ }
-resizeFix();
+// куда "подойти" у стойки (точка перед стойкой)
+const BAR_APPROACH = { x: BAR.x, y: BAR.y + 1.05 }; // +1.05 = примерно 2–3 шага до стойки
 
 function isBlockChar(ch){
   return (ch === "1" || ch === "2");
@@ -107,7 +107,6 @@ const keys = {};
 addEventListener("keydown", (e) => {
   keys[e.code] = true;
 
-  // выбор 1/2 с клавы, когда диалог открыт
   if (state === STATE.DIALOG){
     if (e.code === "Digit1") choose(1);
     if (e.code === "Digit2") choose(2);
@@ -139,8 +138,8 @@ function nearBarCounter(){
   const diff = angleDiff(pa, lookToBar);
 
   // настройка "2–3 шага" и "смотрит в стойку"
-  const DIST_TRIGGER = 1.35;  // 1.2–1.6 (увеличь если сложно поймать)
-  const VIEW_CONE = 0.55;     // 0.35–0.7 (меньше = строже)
+  const DIST_TRIGGER = 1.55;  // увеличили чуть-чуть, чтобы "в 2–3 шагах" ловило проще
+  const VIEW_CONE = 0.55;     // 0.35–0.7
 
   // "спереди" = игрок ниже стойки по Y (не за ней)
   const inFront = py > BAR.y + 0.6;
@@ -158,9 +157,7 @@ function openOverlay(){
   overlay.style.display = "flex";
 
   panel.querySelectorAll(".choice").forEach(el=>{
-    el.addEventListener("click", ()=>{
-      choose(Number(el.dataset.c));
-    });
+    el.addEventListener("click", ()=> choose(Number(el.dataset.c)));
   });
 }
 
@@ -175,7 +172,32 @@ function choose(n){
     subtitle.textContent = "Ты идёшь пить пиво. Иногда лучший выбор — не играть.";
   }
   closeOverlay();
-  // пока просто оставляем в диалоге (или можно перезапуск/конец)
+  // пока оставляем как есть
+}
+
+// мягкое автоприближение к точке
+function autoMoveToPoint(dt, tx, ty){
+  const dx = tx - px;
+  const dy = ty - py;
+  const dist = Math.hypot(dx, dy);
+
+  // если почти дошёл — стоп
+  if (dist < 0.06) return true;
+
+  // поворачиваемся в сторону движения
+  const wantA = Math.atan2(dy, dx);
+  pa = lerpAngle(pa, wantA, dt*6.0);
+
+  // скорость автоподхода
+  const speed = 1.6; // было 3.0 у игрока — автоподход медленнее, кинематографично
+  const step = Math.min(speed*dt, dist);
+
+  const nx = px + Math.cos(wantA)*step;
+  const ny = py + Math.sin(wantA)*step;
+
+  // не врезаться в стену
+  if (!isWall(nx, ny)) { px = nx; py = ny; }
+  return false;
 }
 
 function update(dt){
@@ -183,7 +205,7 @@ function update(dt){
   const rot = 1.7*dt;
 
   if (state === STATE.PLAY){
-    // движение
+    // движение игрока
     if (keys["KeyW"] || keys["ArrowUp"]){
       const nx = px + Math.cos(pa)*move;
       const ny = py + Math.sin(pa)*move;
@@ -200,18 +222,26 @@ function update(dt){
     // триггер
     if (!triggered && nearBarCounter()){
       triggered = true;
+      state = STATE.AUTO;
+      subtitle.textContent = "Ты подходишь ближе к стойке...";
+    }
+  }
+
+  // ✅ автоподход к стойке
+  if (state === STATE.AUTO){
+    const arrived = autoMoveToPoint(dt, BAR_APPROACH.x, BAR_APPROACH.y);
+    if (arrived){
       state = STATE.TURN;
-
-      // ✅ поворот всегда на точку незнакомца (не "влево", а куда надо)
+      // дальше поворот к незнакомцу
       targetAngle = Math.atan2(STRANGER.y - py, STRANGER.x - px);
-
       subtitle.textContent = "Кто-то окликает тебя из угла...";
     }
   }
 
+  // ✅ поворот к незнакомцу
   if (state === STATE.TURN){
     pa = lerpAngle(pa, targetAngle, dt*3.2);
-    if (Math.abs(pa - targetAngle) < 0.02){
+    if (angleDiff(pa, targetAngle) < 0.02){
       state = STATE.DIALOG;
       openOverlay();
     }
@@ -255,7 +285,6 @@ function render(){
     shade = Math.max(40, Math.min(200, shade));
 
     if (hitChar === "2"){
-      // стойка чуть темнее
       shade = Math.max(35, shade - 25);
     }
 
