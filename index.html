@@ -91,7 +91,7 @@ const BAR = { x: 4.0, y: 1.2 };       // центр стойки (можешь �
 const STRANGER = { x: 1.6, y: 2.0 };  // точка "незнакомец в углу" (можешь двигать)
 
 // куда "подойти" у стойки (точка перед стойкой)
-const BAR_APPROACH = { x: BAR.x, y: BAR.y + 1.05 }; // +1.05 = примерно 2–3 шага до стойки
+const BAR_APPROACH = { x: BAR.x, y: BAR.y + 1.25 }; // было 1.05, чуть дальше от коллизии
 
 function isBlockChar(ch){
   return (ch === "1" || ch === "2");
@@ -138,8 +138,8 @@ function nearBarCounter(){
   const diff = angleDiff(pa, lookToBar);
 
   // настройка "2–3 шага" и "смотрит в стойку"
-  const DIST_TRIGGER = 1.55;  // увеличили чуть-чуть, чтобы "в 2–3 шагах" ловило проще
-  const VIEW_CONE = 0.55;     // 0.35–0.7
+  const DIST_TRIGGER = 1.75;  // чуть проще поймать
+  const VIEW_CONE = 0.55;
 
   // "спереди" = игрок ниже стойки по Y (не за ней)
   const inFront = py > BAR.y + 0.6;
@@ -175,28 +175,41 @@ function choose(n){
   // пока оставляем как есть
 }
 
-// мягкое автоприближение к точке
+// ✅ автоприближение к точке (со "скольжением" по стенам, как Doom)
 function autoMoveToPoint(dt, tx, ty){
   const dx = tx - px;
   const dy = ty - py;
   const dist = Math.hypot(dx, dy);
 
-  // если почти дошёл — стоп
-  if (dist < 0.06) return true;
+  if (dist < 0.08) return true;
 
-  // поворачиваемся в сторону движения
   const wantA = Math.atan2(dy, dx);
   pa = lerpAngle(pa, wantA, dt*6.0);
 
-  // скорость автоподхода
-  const speed = 1.6; // было 3.0 у игрока — автоподход медленнее, кинематографично
+  const speed = 1.8; // 1.6–2.2
   const step = Math.min(speed*dt, dist);
 
-  const nx = px + Math.cos(wantA)*step;
-  const ny = py + Math.sin(wantA)*step;
+  const sx = Math.cos(wantA) * step;
+  const sy = Math.sin(wantA) * step;
 
-  // не врезаться в стену
-  if (!isWall(nx, ny)) { px = nx; py = ny; }
+  // X отдельно
+  let nx = px + sx;
+  if (!isWall(nx, py)) {
+    px = nx;
+  } else {
+    nx = px + sx * 0.2;
+    if (!isWall(nx, py)) px = nx;
+  }
+
+  // Y отдельно
+  let ny = py + sy;
+  if (!isWall(px, ny)) {
+    py = ny;
+  } else {
+    ny = py + sy * 0.2;
+    if (!isWall(px, ny)) py = ny;
+  }
+
   return false;
 }
 
@@ -227,18 +240,15 @@ function update(dt){
     }
   }
 
-  // ✅ автоподход к стойке
   if (state === STATE.AUTO){
     const arrived = autoMoveToPoint(dt, BAR_APPROACH.x, BAR_APPROACH.y);
     if (arrived){
       state = STATE.TURN;
-      // дальше поворот к незнакомцу
       targetAngle = Math.atan2(STRANGER.y - py, STRANGER.x - px);
       subtitle.textContent = "Кто-то окликает тебя из угла...";
     }
   }
 
-  // ✅ поворот к незнакомцу
   if (state === STATE.TURN){
     pa = lerpAngle(pa, targetAngle, dt*3.2);
     if (angleDiff(pa, targetAngle) < 0.02){
@@ -280,7 +290,6 @@ function render(){
 
     const wallH = h/(dist+0.1);
 
-    // немного разный цвет для стен и стойки
     let shade = 185 - dist*12;
     shade = Math.max(40, Math.min(200, shade));
 
