@@ -8,12 +8,31 @@
     html, body { margin:0; padding:0; background:#000; height:100%; overflow:hidden; }
     canvas { width:100%; height:100%; image-rendering: pixelated; display:block; }
 
+    /* Нормальный маленький прицел (НЕ пиксельный, а экранный) */
+    #crosshair{
+      position:absolute;
+      left:50%; top:50%;
+      width:18px; height:18px;
+      transform:translate(-50%,-50%);
+      pointer-events:none;
+      opacity:.45;
+    }
+    #crosshair:before, #crosshair:after{
+      content:"";
+      position:absolute;
+      left:50%; top:50%;
+      background:#fff;
+      transform:translate(-50%,-50%);
+      box-shadow:0 0 10px rgba(0,0,0,.8);
+    }
+    #crosshair:before{ width:18px; height:2px; }
+    #crosshair:after { width:2px;  height:18px; }
+
     #subtitle{
       position:absolute; left:0; right:0; bottom:18px;
       text-align:center; color:#d8d8d8; font-family: serif; font-size:16px;
-      text-shadow:0 0 8px #000; pointer-events:none;
-      opacity:.92; user-select:none; padding:0 12px;
-      line-height:1.35;
+      text-shadow:0 0 10px #000; pointer-events:none;
+      opacity:.92; user-select:none; padding:0 12px; line-height:1.35;
     }
 
     #overlay{
@@ -46,21 +65,15 @@
 </head>
 <body>
   <canvas id="c"></canvas>
+  <div id="crosshair"></div>
   <div id="subtitle">Ты заходишь в бар. Шум, смех, пиво.</div>
 
-  <div id="overlay">
-    <div id="panel"></div>
-  </div>
+  <div id="overlay"><div id="panel"></div></div>
 
 <script>
 (() => {
   // =========================
-  // НАСТРОЙКИ
-  // =========================
-  const SHOW_CROSSHAIR = true;
-
-  // =========================
-  // CANVAS / RENDER (ретро-буфер)
+  // CANVAS / ретро буфер
   // =========================
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d');
@@ -69,81 +82,82 @@
   const panel   = document.getElementById('panel');
   const subtitle = document.getElementById('subtitle');
 
-  const W = 240;
-  const H = 135;
+  // Ретро-буфер (как было у тебя “нормально”)
+  const W = 240, H = 135;
   canvas.width = W;
   canvas.height = H;
 
   // =========================
-  // МИР (карта + стойка)
+  // МИР (бар)
   // =========================
   const MAP_W = 24, MAP_H = 16;
 
-  // стены по периметру
-  const map = [];
-  for (let y=0;y<MAP_H;y++){
-    map[y] = [];
-    for (let x=0;x<MAP_W;x++){
-      const border = (x===0||y===0||x===MAP_W-1||y===MAP_H-1) ? 1 : 0;
-      map[y][x] = border;
-    }
-  }
+  // карта с периметром
+  const map = Array.from({length: MAP_H}, (_,y)=>
+    Array.from({length: MAP_W}, (_,x)=>
+      (x===0||y===0||x===MAP_W-1||y===MAP_H-1) ? 1 : 0
+    )
+  );
 
-  // стойка (прямоугольник)
-  const BAR = { x: 9.0, y: 3.4, w: 6.0, h: 1.0 };
+  // стойка вдоль "верхней" стены (примерно по центру)
+  // (Если у тебя стойка уже была идеальная — скажи, подвинем числа)
+  const BAR = { x: 8.0, y: 3.2, w: 8.0, h: 0.9 };
 
-  // незнакомец/стол (точки)
-  const STRANGER = { x: 3.0, y: 3.2 };
-  const TABLE    = { x: 3.4, y: 3.6 };
+  // незнакомец слева у стены
+  const STRANGER = { x: 3.0, y: 3.0 };
+  // точка "стола" — куда автоподход должен довести
+  const TABLE = { x: 4.0, y: 4.2 };
 
-  // игрок
-  let px = 12.0, py = 12.5;
+  // игрок старт
+  let px = 12.0, py = 12.2;
   let pa = -Math.PI/2;
 
   // =========================
-  // Состояния
+  // STATE
   // =========================
   const STATE = {
     PLAY:"play",
-    TURN:"turn",
+    TURN_TO_STRANGER:"turn_to_stranger",
     DIALOG1:"dialog1",
-    AUTO:"auto",
+    AUTO_WALK:"auto_walk",
     DIALOG2:"dialog2",
     END:"end"
   };
   let state = STATE.PLAY;
 
   let triggerFired = false;
-  let turnTarget = null;
 
   // =========================
-  // Утилиты
+  // COLLISION
   // =========================
   function isWall(x,y){
     const xi = Math.floor(x), yi = Math.floor(y);
     if (xi<0||yi<0||xi>=MAP_W||yi>=MAP_H) return true;
     if (map[yi][xi] === 1) return true;
 
-    // стойка — тоже коллизия
+    // стойка — коллизия
     if (x >= BAR.x && x <= BAR.x+BAR.w && y >= BAR.y && y <= BAR.y+BAR.h) return true;
-
     return false;
   }
 
+  // =========================
+  // RAYCAST
+  // =========================
   function castRay(angle){
     const dx = Math.cos(angle), dy = Math.sin(angle);
     let x = px, y = py;
     let dist = 0;
     const step = 0.03;
     for (let i=0;i<2200;i++){
-      x += dx*step;
-      y += dy*step;
-      dist += step;
+      x += dx*step; y += dy*step; dist += step;
       if (isWall(x,y)) break;
     }
     return dist;
   }
 
+  // =========================
+  // ANGLES
+  // =========================
   function lerpAngle(a,b,t){
     let d = ((b - a + Math.PI*3) % (Math.PI*2)) - Math.PI;
     t = Math.min(1, Math.max(0, t));
@@ -151,17 +165,17 @@
   }
 
   // =========================
-  // ТРИГГЕР У СТОЙКИ (СПЕРЕДИ)
+  // TRIGGER: только СПЕРЕДИ стойки
   // =========================
   function checkBarFrontTrigger(){
     if (triggerFired) return false;
 
-    // зона "перед стойкой" (2–3 шага)
+    // зона прямо перед стойкой (только спереди)
     const frontZone = {
-      x: BAR.x,
-      y: BAR.y + BAR.h + 0.2,
-      w: BAR.w,
-      h: 1.2
+      x: BAR.x + 0.4,
+      y: BAR.y + BAR.h + 0.15,
+      w: BAR.w - 0.8,
+      h: 0.85
     };
 
     const inside =
@@ -173,21 +187,18 @@
 
   function startBarTrigger(){
     triggerFired = true;
-
-    // поворачиваемся на незнакомца (точно)
-    turnTarget = Math.atan2(STRANGER.y - py, STRANGER.x - px);
-
-    state = STATE.TURN;
     subtitle.textContent = "Кто-то окликает тебя из угла...";
-    // чуть пауза, чтобы ощущалось как режиссура
+    state = STATE.TURN_TO_STRANGER;
+
+    // через чуть-чуть показываем диалог (как катсцена)
     setTimeout(() => {
       state = STATE.DIALOG1;
       openOverlay1();
-    }, 650);
+    }, 500);
   }
 
   // =========================
-  // ОВЕРЛЕИ
+  // UI
   // =========================
   function openOverlay1(){
     panel.innerHTML = `
@@ -228,15 +239,13 @@
     document.getElementById("restart").onclick = () => location.reload();
   }
 
-  function closeOverlay(){
-    overlay.style.display = "none";
-  }
+  function closeOverlay(){ overlay.style.display = "none"; }
 
   function choose1(n){
     if (n === 1){
       closeOverlay();
       subtitle.textContent = "Ты подходишь к незнакомцу...";
-      state = STATE.AUTO; // ✅ автоподход
+      state = STATE.AUTO_WALK; // ✅ автоподход
     } else {
       closeOverlay();
       state = STATE.END;
@@ -248,8 +257,6 @@
     closeOverlay();
     if (n === 1){
       subtitle.textContent = "Ты хлопаешь его по спине. Он откашливается...";
-      // дальше: щёлк -> лесная опушка (следующий шаг)
-      // пока заглушка
       setTimeout(()=>{
         subtitle.textContent = "— Ладно. Это было неловко. Если выиграешь — куплю тебе пиво.";
       }, 900);
@@ -261,13 +268,12 @@
   }
 
   // =========================
-  // УПРАВЛЕНИЕ
+  // INPUT
   // =========================
   const keys = {};
   window.addEventListener('keydown', (e)=>{
     keys[e.code] = true;
 
-    // выборы цифрами
     if (overlay.style.display === "flex"){
       if (state === STATE.DIALOG1){
         if (e.code === "Digit1") choose1(1);
@@ -282,24 +288,22 @@
   window.addEventListener('keyup', (e)=> keys[e.code] = false);
 
   // =========================
-  // АВТОПОДХОД к столу
+  // AUTO WALK (после выбора "Подойти")
   // =========================
   function updateAuto(dt){
-    // поворачиваемся к столу
     const ax = TABLE.x - px;
     const ay = TABLE.y - py;
-    const want = Math.atan2(ay, ax);
-    pa = lerpAngle(pa, want, dt*3.2);
 
-    // шаг вперёд (медленно, как катсцена)
-    const speed = 1.9;
+    const want = Math.atan2(ay, ax);
+    pa = lerpAngle(pa, want, dt*4.0);
+
+    const speed = 1.7;
     const step = speed*dt;
 
     const nx = px + Math.cos(pa)*step;
     const ny = py + Math.sin(pa)*step;
     if (!isWall(nx, ny)) { px = nx; py = ny; }
 
-    // когда дошли
     if (Math.hypot(ax, ay) < 0.85){
       state = STATE.DIALOG2;
       openOverlay2();
@@ -307,49 +311,38 @@
   }
 
   // =========================
-  // UPDATE / LOOP
+  // UPDATE
   // =========================
-  let last = performance.now();
-  function loop(now){
-    const dt = Math.min(0.04, (now-last)/1000);
-    last = now;
-
-    update(dt);
-    render();
-
-    requestAnimationFrame(loop);
-  }
-
   function update(dt){
-    // триггер стойки
+    // триггер у стойки
     if (state === STATE.PLAY && checkBarFrontTrigger()){
       startBarTrigger();
     }
 
-    // поворот при триггере
-    if (state === STATE.TURN && turnTarget !== null){
-      pa = lerpAngle(pa, turnTarget, dt*2.2);
+    // поворот к незнакомцу во время триггера (просто камера, без движения)
+    if (state === STATE.TURN_TO_STRANGER){
+      const target = Math.atan2(STRANGER.y - py, STRANGER.x - px);
+      pa = lerpAngle(pa, target, dt*2.5);
+      return;
     }
 
-    // авто-режим
-    if (state === STATE.AUTO){
+    // авто-ходьба
+    if (state === STATE.AUTO_WALK){
       updateAuto(dt);
       return;
     }
 
-    // если открыт оверлей — не двигаемся
+    // если оверлей — не двигаем
     if (overlay.style.display === "flex") return;
 
-    // движение только в PLAY
     if (state !== STATE.PLAY) return;
 
-    // поворот
+    // управление
     let rot = 0;
     if (keys["ArrowLeft"] || keys["KeyA"]) rot -= 1;
     if (keys["ArrowRight"] || keys["KeyD"]) rot += 1;
     pa += rot * dt * 2.0;
 
-    // ходьба
     let move = 0;
     if (keys["ArrowUp"] || keys["KeyW"]) move += 1;
     if (keys["ArrowDown"] || keys["KeyS"]) move -= 1;
@@ -363,35 +356,39 @@
   }
 
   // =========================
-  // RENDER (псевдо DOOM)
+  // RENDER (думчик)
   // =========================
   function render(){
-    // потолок/пол
     ctx.fillStyle = "#060606";
     ctx.fillRect(0,0,W,H/2);
     ctx.fillStyle = "#020202";
     ctx.fillRect(0,H/2,W,H/2);
 
     const fov = Math.PI/3;
+
     for (let x=0;x<W;x++){
       const a = pa - fov/2 + (x/(W-1))*fov;
       const d = castRay(a);
-      const dd = Math.max(0.001, d*Math.cos(a-pa)); // fish-eye fix
+      const dd = Math.max(0.001, d*Math.cos(a-pa));
 
       const wh = Math.min(H, (H*0.95) / dd);
       const shade = Math.max(40, 220 - dd*38);
       ctx.fillStyle = `rgb(${shade|0},${shade|0},${shade|0})`;
       ctx.fillRect(x, (H-wh)/2, 1, wh);
     }
-
-    // прицел
-    if (SHOW_CROSSHAIR){
-      ctx.fillStyle = "rgba(255,255,255,0.35)";
-      ctx.fillRect(W/2-6, H/2, 12, 1);
-      ctx.fillRect(W/2, H/2-6, 1, 12);
-    }
   }
 
+  // =========================
+  // LOOP
+  // =========================
+  let last = performance.now();
+  function loop(now){
+    const dt = Math.min(0.04, (now-last)/1000);
+    last = now;
+    update(dt);
+    render();
+    requestAnimationFrame(loop);
+  }
   requestAnimationFrame(loop);
 })();
 </script>
