@@ -63,11 +63,11 @@ resize();
   Карта 8x8:
   1 = стена
   0 = пусто
-  2 = стойка (тоже как "стена" для лучей, чтобы она была видна)
+  2 = стойка (видимая и "твердая")
 */
 const map = [
   "11111111",
-  "10022001", // стойка вдоль стены (две клетки)
+  "10022001",
   "10000001",
   "10000001",
   "10000001",
@@ -80,22 +80,29 @@ let px = 4.0;
 let py = 6.0;
 let pa = -Math.PI/2;
 
-const STATE = { PLAY:"play", AUTO:"auto", TURN:"turn", DIALOG:"dialog" };
+const STATE = {
+  PLAY: "play",
+  AUTO: "auto",
+  TURN: "turn",
+  DIALOG: "dialog",
+};
 let state = STATE.PLAY;
 
 let triggered = false;
+
+// 🎭 точки мира
+const BAR = { x: 4.0, y: 1.2 };        // центр стойки
+const STRANGER = { x: 1.6, y: 2.0 };   // "угол" незнакомца
+
+// точки, куда автоподводим игрока
+const BAR_APPROACH = { x: BAR.x, y: BAR.y + 1.25 };          // перед стойкой
+const STRANGER_APPROACH = { x: STRANGER.x + 1.0, y: STRANGER.y + 0.9 }; // рядом с незнакомцем (в проходе)
+
+// авто-цель (меняется по событиям)
+let autoTarget = { x: BAR_APPROACH.x, y: BAR_APPROACH.y };
 let targetAngle = pa;
 
-// 🎭 точки в мире
-const BAR = { x: 4.0, y: 1.2 };       // центр стойки (можешь двигать)
-const STRANGER = { x: 1.6, y: 2.0 };  // точка "незнакомец в углу" (можешь двигать)
-
-// куда "подойти" у стойки (точка перед стойкой)
-const BAR_APPROACH = { x: BAR.x, y: BAR.y + 1.25 }; // было 1.05, чуть дальше от коллизии
-
-function isBlockChar(ch){
-  return (ch === "1" || ch === "2");
-}
+function isBlockChar(ch){ return (ch === "1" || ch === "2"); }
 
 function isWall(x,y){
   const mx = Math.floor(x), my = Math.floor(y);
@@ -137,11 +144,8 @@ function nearBarCounter(){
   const lookToBar = Math.atan2(dy, dx);
   const diff = angleDiff(pa, lookToBar);
 
-  // настройка "2–3 шага" и "смотрит в стойку"
-  const DIST_TRIGGER = 1.75;  // чуть проще поймать
+  const DIST_TRIGGER = 1.75;
   const VIEW_CONE = 0.55;
-
-  // "спереди" = игрок ниже стойки по Y (не за ней)
   const inFront = py > BAR.y + 0.6;
 
   return dist < DIST_TRIGGER && diff < VIEW_CONE && inFront;
@@ -161,32 +165,20 @@ function openOverlay(){
   });
 }
 
-function closeOverlay(){
-  overlay.style.display = "none";
-}
+function closeOverlay(){ overlay.style.display = "none"; }
 
-function choose(n){
-  if (n === 1){
-    subtitle.textContent = "Ты подходишь к незнакомцу...";
-  } else {
-    subtitle.textContent = "Ты идёшь пить пиво. Иногда лучший выбор — не играть.";
-  }
-  closeOverlay();
-  // пока оставляем как есть
-}
-
-// ✅ автоприближение к точке (со "скольжением" по стенам, как Doom)
+// ✅ автодвижение (со скольжением по стенам)
 function autoMoveToPoint(dt, tx, ty){
   const dx = tx - px;
   const dy = ty - py;
   const dist = Math.hypot(dx, dy);
 
-  if (dist < 0.08) return true;
+  if (dist < 0.10) return true;
 
   const wantA = Math.atan2(dy, dx);
   pa = lerpAngle(pa, wantA, dt*6.0);
 
-  const speed = 1.8; // 1.6–2.2
+  const speed = 1.9;
   const step = Math.min(speed*dt, dist);
 
   const sx = Math.cos(wantA) * step;
@@ -194,31 +186,44 @@ function autoMoveToPoint(dt, tx, ty){
 
   // X отдельно
   let nx = px + sx;
-  if (!isWall(nx, py)) {
-    px = nx;
-  } else {
-    nx = px + sx * 0.2;
+  if (!isWall(nx, py)) px = nx;
+  else {
+    nx = px + sx*0.2;
     if (!isWall(nx, py)) px = nx;
   }
 
   // Y отдельно
   let ny = py + sy;
-  if (!isWall(px, ny)) {
-    py = ny;
-  } else {
-    ny = py + sy * 0.2;
+  if (!isWall(px, ny)) py = ny;
+  else {
+    ny = py + sy*0.2;
     if (!isWall(px, ny)) py = ny;
   }
 
   return false;
 }
 
+function choose(n){
+  closeOverlay();
+
+  if (n === 1){
+    // ✅ ВОТ ТУТ БЫЛА ПРОБЛЕМА: раньше тут не было движения вообще
+    subtitle.textContent = "Ты подходишь к незнакомцу...";
+    state = STATE.AUTO;
+    autoTarget = { x: STRANGER_APPROACH.x, y: STRANGER_APPROACH.y };
+    // после подхода — повернуться на незнакомца
+    targetAngle = Math.atan2(STRANGER.y - py, STRANGER.x - px);
+  } else {
+    subtitle.textContent = "Ты идёшь пить пиво. Иногда лучший выбор — не играть.";
+    // можно потом сделать «конец»/кнопку «заново», пока просто оставим
+  }
+}
+
 function update(dt){
   const move = 3.0*dt;
-  const rot = 1.7*dt;
+  const rot  = 1.7*dt;
 
   if (state === STATE.PLAY){
-    // движение игрока
     if (keys["KeyW"] || keys["ArrowUp"]){
       const nx = px + Math.cos(pa)*move;
       const ny = py + Math.sin(pa)*move;
@@ -229,45 +234,66 @@ function update(dt){
       const ny = py - Math.sin(pa)*move;
       if (!isWall(nx,ny)) { px = nx; py = ny; }
     }
-    if (keys["KeyA"] || keys["ArrowLeft"]) pa -= rot;
+    if (keys["KeyA"] || keys["ArrowLeft"])  pa -= rot;
     if (keys["KeyD"] || keys["ArrowRight"]) pa += rot;
 
-    // триггер
     if (!triggered && nearBarCounter()){
       triggered = true;
-      state = STATE.AUTO;
+
+      // 1) автоподвести к стойке
       subtitle.textContent = "Ты подходишь ближе к стойке...";
+      state = STATE.AUTO;
+      autoTarget = { x: BAR_APPROACH.x, y: BAR_APPROACH.y };
+      // после авто-подхода мы повернемся (в STATE.TURN) на незнакомца
+      targetAngle = Math.atan2(STRANGER.y - py, STRANGER.x - px);
     }
   }
 
+  // ✅ авто-движение к текущей цели
   if (state === STATE.AUTO){
-    const arrived = autoMoveToPoint(dt, BAR_APPROACH.x, BAR_APPROACH.y);
+    const arrived = autoMoveToPoint(dt, autoTarget.x, autoTarget.y);
     if (arrived){
       state = STATE.TURN;
-      targetAngle = Math.atan2(STRANGER.y - py, STRANGER.x - px);
-      subtitle.textContent = "Кто-то окликает тебя из угла...";
+      // targetAngle уже выставлен (либо на незнакомца после стойки, либо после выбора 1)
     }
   }
 
+  // ✅ поворот камеры к targetAngle
   if (state === STATE.TURN){
     pa = lerpAngle(pa, targetAngle, dt*3.2);
     if (angleDiff(pa, targetAngle) < 0.02){
-      state = STATE.DIALOG;
-      openOverlay();
+      // если это поворот после стойки — показать диалог
+      // если это поворот после подхода к незнакомцу — просто оставить и дальше продолжим сцену позже
+      if (overlay.style.display !== "flex" && !panel.innerHTML){
+        // ничего
+      }
+
+      // если мы ещё не показывали выбор — показываем
+      if (overlay.style.display !== "flex" && panel.innerHTML === ""){
+        subtitle.textContent = "Кто-то окликает тебя из угла...";
+        state = STATE.DIALOG;
+        openOverlay();
+      } else {
+        // после выбора 1 мы сюда попадём без открытия окна — пусть игрок постоит лицом к незнакомцу
+        state = STATE.PLAY;
+      }
     }
+  }
+
+  // когда диалог открыт — игрок не ходит
+  if (state === STATE.DIALOG){
+    // ничего
   }
 }
 
 function render(){
   const w = canvas.width, h = canvas.height;
 
-  // потолок / пол
   ctx.fillStyle = "#0f0f0f";
   ctx.fillRect(0,0,w,h/2);
   ctx.fillStyle = "#050505";
   ctx.fillRect(0,h/2,w,h/2);
 
-  // raycast
   for (let x=0; x<w; x++){
     const angle = pa + (x/w - 0.5);
     let dist = 0;
@@ -292,10 +318,7 @@ function render(){
 
     let shade = 185 - dist*12;
     shade = Math.max(40, Math.min(200, shade));
-
-    if (hitChar === "2"){
-      shade = Math.max(35, shade - 25);
-    }
+    if (hitChar === "2") shade = Math.max(35, shade - 25);
 
     ctx.fillStyle = `rgb(${shade},${shade},${shade})`;
     ctx.fillRect(x, h/2 - wallH/2, 1, wallH);
