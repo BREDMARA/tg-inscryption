@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Комната ревью</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="app">
+    <header>
+      <h1>Комната ревью</h1>
+      <p>Telegram Mini App MVP: комментарии по точкам, версии, финальное согласование.</p>
+    </header>
+
+    <section class="card">
+      <h2>1) Вход / профиль</h2>
+      <div class="row">
+        <label>Ваш локальный User ID
+          <input id="userId" type="number" min="1" placeholder="Например 1" />
+        </label>
+        <button id="saveUser">Сохранить</button>
+      </div>
+      <small>Для демо используем x-user-id в заголовке API.</small>
+    </section>
+
+    <section class="card" id="createCard">
+      <h2>2) Создать ревью-сессию</h2>
+      <div class="grid">
+        <label>Название проекта <input id="projectTitle" /></label>
+        <label>Название макета/сессии <input id="sessionTitle" /></label>
+      </div>
+      <label>Описание
+        <textarea id="sessionDescription"></textarea>
+      </label>
+      <label>Первый макет (PNG/JPG/WEBP)
+        <input id="initialFile" type="file" accept="image/png,image/jpeg,image/webp" />
+      </label>
+      <button id="createSession">Создать сессию</button>
+      <div id="invite"></div>
+    </section>
+
+    <section class="card" id="sessionView" hidden>
+      <h2>3) Просмотр сессии</h2>
+      <div id="sessionMeta"></div>
+
+      <div class="toolbar">
+        <label>Фильтр комментариев
+          <select id="commentFilter">
+            <option value="all">Все</option>
+            <option value="open">Открыто</option>
+            <option value="in_progress">В работе</option>
+            <option value="resolved">Решено</option>
+            <option value="ignored">Игнор</option>
+          </select>
+        </label>
+        <button id="refresh">Обновить</button>
+      </div>
+
+      <div class="layout">
+        <div>
+          <div id="canvasWrap" class="canvas-wrap">
+            <img id="mockupImage" alt="Mockup" />
+            <div id="dotsLayer"></div>
+          </div>
+          <small>Нажмите на макет, чтобы добавить комментарий по точке.</small>
+        </div>
+
+        <div class="side">
+          <h3>Комментарии</h3>
+          <ul id="commentsList"></ul>
+        </div>
+      </div>
+
+      <details>
+        <summary>Загрузить новую версию</summary>
+        <label>Файл
+          <input id="newVersionFile" type="file" accept="image/png,image/jpeg,image/webp" />
+        </label>
+        <label>Описание изменений
+          <input id="changeNote" placeholder="Что изменили" />
+        </label>
+        <button id="uploadVersion">Загрузить V+1</button>
+      </details>
+
+      <div class="row">
+        <button id="finalApprove" class="primary">Согласовать финально</button>
+      </div>
+
+      <details>
+        <summary>История действий</summary>
+        <ul id="activityList"></ul>
+      </details>
+    </section>
+  </main>
+
+  <script type="module" src="/main.js"></script>
+</body>
+</html>
